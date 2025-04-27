@@ -56,9 +56,6 @@ async function processQueue() {
           parse_mode: "HTML",
         });
       }
-
-      apartmentsSentToday++;
-      console.log("✅ Отправлено:", data.caption.slice(0, 30) + "...");
     } catch (error) {
       console.error("❌ Ошибка отправки:", error.message);
     }
@@ -90,7 +87,6 @@ async function fetchAndSendApartments() {
     );
 
     const apartments = response.data.items;
-    console.log(apartments);
     for (const item of apartments) {
       if (!sentApartmentIds.has(item.id)) {
         sentApartmentIds.add(item.id);
