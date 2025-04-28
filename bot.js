@@ -174,7 +174,7 @@ fetchAndSendApartments();
 setInterval(fetchAndSendApartments, 5 * 60 * 1000);
 
 // Каждую 1 минуту отправляем 1 квартиру
-setInterval(processQueue, 1 * 60 * 1000);
+setInterval(processQueue, 5 * 60 * 1000);
 
 // Каждые 48 часов очищаем отправленные ID
 setInterval(clearSentIds, 48 * 60 * 60 * 1000);
