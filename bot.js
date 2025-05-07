@@ -11,16 +11,13 @@ const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
 // Состояния
 let sentApartmentIds = new Set();
-let pendingQueue = []; // теперь очередь массивом
+let pendingQueue = [];
 
 // ======= Функции ==========
-
-// Пауза
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Загрузка отправленных ID
 function loadSentIds() {
   if (fs.existsSync(FILE_PATH)) {
     const savedData = JSON.parse(fs.readFileSync(FILE_PATH));
@@ -28,162 +25,124 @@ function loadSentIds() {
   }
 }
 
-// Сохранение отправленных ID
 function saveSentIds() {
   fs.writeFileSync(FILE_PATH, JSON.stringify([...sentApartmentIds]));
 }
 
-// Получить новые квартиры
-async function fetchAndSendApartments() {
-    if (pendingQueue.length > 0) {
-      console.log("⏳ Очередь ещё не пустая, пропускаем поиск новых квартир...");
-      return;
-    }
-  
-    try {
-      const response = await axios.get(
-        "https://lalafo.kg/api/search/v3/feed/search",
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            device: "pc",
-          },
-          params: {
-            expand: "url",
-            "per-page": 50,
-            page: 1,
-            category_id: 2044,
-            city_id: 103184,
-            params: "19057",
-          },
-        }
-      );
-  
-      const apartments = response.data.items;
-      for (const item of apartments) {
-        if (!sentApartmentIds.has(item.id)) {
-          console.log(`🔔 Найдена новая квартира: ${item.id}`);
-          pendingQueue.push(item.id); // добавляем в очередь
-        }
-      }
-    } catch (error) {
-      console.error("Ошибка при получении списка квартир:", error.message);
-    }
-  }
-  
+function isWithinWorkingHours() {
+  const hour = new Date().getHours();
+  return hour >= 9 && hour < 23;
+}
 
-// Получить детали квартиры и отправить
+async function fetchAndSendApartments() {
+  if (pendingQueue.length > 0) {
+    console.log("⏳ Очередь ещё не пустая, пропускаем поиск новых квартир...");
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      "https://lalafo.kg/api/search/v3/feed/search",
+      {
+        headers: { "User-Agent": "Mozilla/5.0", device: "pc" },
+        params: {
+          expand: "url",
+          "per-page": 50,
+          page: 1,
+          category_id: 2044,
+          city_id: 103184,
+          params: "19057",
+        },
+      }
+    );
+
+    const apartments = response.data.items;
+    for (const item of apartments) {
+      if (!sentApartmentIds.has(item.id)) {
+        console.log(`🔔 Найдена новая квартира: ${item.id}`);
+        pendingQueue.push(item.id);
+      }
+    }
+  } catch (error) {
+    console.error("Ошибка при получении списка квартир:", error.message);
+  }
+}
+
 async function fetchApartmentDetailsAndSend(adId) {
   try {
     const response = await axios.get(
       `https://lalafo.kg/api/search/v3/feed/details/${adId}?expand=url`,
       {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          device: "pc",
-        },
+        headers: { "User-Agent": "Mozilla/5.0", device: "pc" },
       }
     );
 
     const item = response.data;
-    console.log(item, 'item');
     const title = item.title?.replace('Long term rental apartments', 'Сдается квартира') || 'Без названия';
-    const link = `https://lalafo.kg${item.url}`;
-    const district =
-      item.params?.find((p) => p.name === "District")?.value || "Не указан";
+    const district = item.params?.find((p) => p.name === "District")?.value || "Не указан";
     const postedAt = new Date(item.created_time * 1000).toLocaleString("ru-RU");
     const phone = item.mobile || "Не указан";
-
-    // Вытаскиваем важные параметры
     const importantParams = extractImportantParams(item.params || []);
-    const floor =
-      importantParams.floorNumber && importantParams.numberOfFloors
-        ? `${importantParams.floorNumber} из ${importantParams.numberOfFloors}`
-        : "Не указано";
-    const whoOwner =
-      importantParams.owner?.toLowerCase() === "owner"
-        ? "Собственник"
-        : "Агентство";
+
+    const floor = importantParams.floorNumber && importantParams.numberOfFloors
+      ? `${importantParams.floorNumber} из ${importantParams.numberOfFloors}`
+      : "Не указано";
+    const whoOwner = importantParams.owner?.toLowerCase() === "owner" ? "Собственник" : "Агентство";
     const deposit = importantParams.deposit || "Не указан";
+    const price = item.price ? `${item.price} ${item.currency}` : "Цена договорная";
 
-    const price = item.price
-      ? `${item.price} ${item.currency}`
-      : "Цена договорная";
-
-    const photoUrl = item.images?.[0]?.original_url || item.images?.[0]?.thumbnail_url;
-
-    // 📋 Формируем красивый текст
     const caption = `
-<a href="${link}"><b>${title}</b></a>
+<b>${title}</b>
 
 📍 Район: <b>#${district.replace(/\s/g, "")}</b>
 💵 Цена: <b>${price}</b>
 📞 Телефон: <b>${phone}</b>
 
 🏢 Этаж: <b>${floor}</b>
-👤 Владелец: <b>${whoOwner}</b>
+🔑 Квартира от: <b>${whoOwner}</b>
 💰 Депозит: <b>${deposit}</b>
 
 🗓 Дата публикации: <b>${postedAt}</b>
 `.trim();
 
-    const options = {
-      parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [[{ text: "➡️ К объявлению", url: link }]],
-      },
-    };
+    const media = item.images?.slice(0, 10).map((img, index) => ({
+      type: "photo",
+      media: img.original_url || img.thumbnail_url,
+      caption: index === 0 ? caption : undefined,
+      parse_mode: index === 0 ? "HTML" : undefined,
+    }));
 
-    if (photoUrl) {
-      await bot.sendPhoto(CHANNEL_USERNAME, photoUrl, { caption, ...options });
+    if (media?.length > 0) {
+      await bot.sendMediaGroup(CHANNEL_USERNAME, media);
     } else {
-      await bot.sendMessage(CHANNEL_USERNAME, caption, options);
+      await bot.sendMessage(CHANNEL_USERNAME, caption, { parse_mode: "HTML" });
     }
 
     console.log(`✅ Отправлено объявление: ${adId}`);
-
     sentApartmentIds.add(adId);
     saveSentIds();
   } catch (error) {
-    console.error(
-      `❌ Ошибка отправки деталей объявления ${adId}:`,
-      error.message
-    );
+    console.error(`❌ Ошибка отправки деталей объявления ${adId}:`, error.message);
   }
 }
 
-// Функция обработки очереди с интервалом 1 минута
 async function processQueue() {
-  if (pendingQueue.length === 0) {
+  if (!isWithinWorkingHours()) {
+    console.log("🕒 Вне рабочего времени, пропускаем отправку.");
     return;
   }
 
-  const adId = pendingQueue.shift(); // берём первый элемент
+  if (pendingQueue.length === 0) return;
+
+  const adId = pendingQueue.shift();
   await fetchApartmentDetailsAndSend(adId);
 }
-
-// ======== Старт процесса ==========
-
-// Загружаем ранее отправленные ID
-loadSentIds();
-
-// Сразу первый раз ищем квартиры
-fetchAndSendApartments();
-
-// Каждые 5 минут обновляем новые квартиры
-setInterval(fetchAndSendApartments, 5 * 60 * 1000);
-
-// Каждую 1 минуту отправляем 1 квартиру
-setInterval(processQueue, 5 * 60 * 1000);
-
-// Каждые 48 часов очищаем отправленные ID
-setInterval(clearSentIds, 48 * 60 * 60 * 1000);
 
 function extractImportantParams(params) {
   const importantFields = {
     "Floor Number": null,
     "Number of Floors": null,
-    "KG - Seller Type": null, // Это "Owner"
+    "KG - Seller Type": null,
     "Deposit, som": null,
   };
 
@@ -202,7 +161,15 @@ function extractImportantParams(params) {
 }
 
 function clearSentIds() {
-  sentApartmentIds.clear(); // очищаем все отправленные ID
-  saveSentIds(); // сохраняем пустой файл
+  sentApartmentIds.clear();
+  saveSentIds();
   console.log("🧹 Очищен список отправленных квартир!");
 }
+
+// ======== Старт ==========
+loadSentIds();
+fetchAndSendApartments();
+
+setInterval(fetchAndSendApartments, 5 * 60 * 1000); // каждые 5 минут новые
+setInterval(processQueue, 15 * 60 * 1000); // каждые 15 минут отправка
+setInterval(clearSentIds, 48 * 60 * 60 * 1000); // раз в 2 дня очистка
