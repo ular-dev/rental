@@ -31,7 +31,7 @@ function saveSentIds() {
 
 function isWithinWorkingHours() {
   const hour = new Date().getHours();
-  return hour >= 9 && hour < 23;
+  return hour >= 9 && hour < 24;
 }
 
 async function fetchAndSendApartments() {
