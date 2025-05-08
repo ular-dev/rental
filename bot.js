@@ -30,8 +30,9 @@ function saveSentIds() {
 }
 
 function isWithinWorkingHours() {
-  const hour = new Date().getHours();
-  return hour >= 9 && hour < 24;
+  const now = new Date();
+  const hour = now.toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", hour: '2-digit', hour12: false });
+  return parseInt(hour, 10) >= 9 && parseInt(hour, 10) < 24;
 }
 
 async function fetchAndSendApartments() {
