@@ -104,6 +104,8 @@ async function fetchApartmentDetailsAndSend(adId) {
 💰 Депозит: <b>${deposit}</b>
 
 🗓 Дата публикации: <b>${postedAt}</b>
+
+🔗 <i>Больше объявлений в Telegram:</i> @rental_bishkek
 `.trim();
 
     const media = item.images?.slice(0, 10).map((img, index) => ({
