@@ -174,5 +174,5 @@ loadSentIds();
 fetchAndSendApartments();
 
 setInterval(fetchAndSendApartments, 5 * 60 * 1000); // каждые 5 минут новые
-setInterval(processQueue, 15 * 60 * 1000); // каждые 15 минут отправка
+setInterval(processQueue, 60 * 60 * 1000); // каждые 60 минут отправка
 setInterval(clearSentIds, 48 * 60 * 60 * 1000); // раз в 2 дня очистка
